@@ -1,0 +1,323 @@
+---
+title: "Post_analysis"
+author: "Nicole Deng"
+date: "2023-09-16"
+output: html_document
+---
+=======
+Readme:
+1. clean the individual result using exp_eeg_beh_processing_pipeline R code
+2. On the current file, update the variable in the first block named "subject" to the current subject number. 
+3. Run the rest of blocks
+=======
+Workflow
+1. get input results files for all the existing participants
+2. create four data frames [reaction_time, distance_rating, order_accuracy, source_accuracy]
+3. align input files to the designed files 
+4. connect the new data frames with existing statistical analyses/visualization codes
+=======
+
+#load packages
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(scales)
+```
+
+# load the cleaned data
+```{r}
+subject <- c(36:61) 
+df_combined <- data.frame()
+for (i in subject) {
+  filename <- paste("subject", as.character(i), sep="")
+  subject_label <- paste("Sub", as.character(i), sep=" ")
+  pathname <- paste ("/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/individual_results/results_Sub",as.character(i),".csv",sep="")
+  temp_data <- read.csv(pathname)
+  temp_data$Subject <- subject_label
+  assign(filename, temp_data)
+  df_combined <- rbind(df_combined, temp_data)
+}
+```
+
+## create four data frames [reaction_time, distance_rating, order_accuracy, source_accuracy]
+```{r }
+colnames(df_combined)[1] <- "Metrics"
+
+# Preparing distance rating data frame
+distance_rating <- subset(df_combined, Metrics == "DistanceRating")
+distance_rating <- distance_rating %>% select(-FT, -PreB)
+distance_rating_long <- distance_rating %>% 
+  pivot_longer(
+    cols = c(B, NB), # Columns to be converted to long format
+    names_to = "condition",    
+    values_to = "value"      
+  )
+write.csv(distance_rating, "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/group_results/distance_rating.csv", row.names = FALSE)
+
+
+# Preparing order_accuracy data frame
+order_accuracy <- subset(df_combined, Metrics == "TemporalOrderAccuracy")
+order_accuracy <- order_accuracy %>% select(-FT, -PreB)
+
+order_accuracy_long <- order_accuracy %>% 
+  pivot_longer(
+    cols = c(B, NB), # Columns to be converted to long format
+    names_to = "condition",    
+    values_to = "value"      
+  )
+write.csv(order_accuracy, "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/group_results/order_accuracy.csv", row.names = FALSE)
+
+# For the source_accuracy dataset
+source_accuracy <- subset(df_combined, Metrics == "SourceMemoryAccuracy")
+source_accuracy_long <- source_accuracy %>% 
+  pivot_longer(
+    cols = c(B, NB, FT, PreB), # Columns to be converted to long format
+    names_to = "condition",    
+    values_to = "value"      
+  )
+
+write.csv(source_accuracy, "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/group_results/source_accuracy.csv", row.names = FALSE)
+
+# For the encoding_time dataset
+encoding_time <- subset(df_combined, Metrics == "EncodingTime")
+encoding_time_long <- encoding_time %>% 
+  pivot_longer(
+    cols = c(B, NB, FT, PreB), # Columns to be converted to long format
+    names_to = "condition",    
+    values_to = "value"      
+  )
+write.csv(encoding_time, "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/group_results/encoding_time.csv", row.names = FALSE)
+
+# For the reaction_time_vs_source dataset
+reaction_time_vs_source <- subset(df_combined, Metrics == "Reaction_time_vs_source")
+reaction_time_vs_source_long <- reaction_time_vs_source %>% 
+  pivot_longer(
+    cols = c(Correct.Source,Incorrect.Source), # Columns to be converted to long format
+    names_to = "condition",    
+    values_to = "value"      
+  )
+
+
+write.csv(encoding_time, "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/group_results/reaction_time_vs_source", row.names = FALSE)
+
+# For the reaction_time_vs_order dataset
+
+reaction_time_vs_order <- subset(df_combined, Metrics == "Reaction_time_vs_order")
+reaction_time_vs_order_long <- reaction_time_vs_order %>% 
+  pivot_longer(
+    cols = c(Correct.order,Incorrect.order), # Columns to be converted to long format
+    names_to = "condition",    
+    values_to = "value"      
+  )
+
+
+write.csv(encoding_time, "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/group_results/reaction_time_vs_order", row.names = FALSE)
+```
+
+# Temporal order distance ratings
+
+### Participants as a block
+
+#### t-test
+
+```{r}
+library(tidyr)
+t.test(distance_rating$NB, distance_rating$B, paired=TRUE, alt="two.sided")
+```
+
+### Visualization
+
+```{r, fig.width=4,fig.height=5}
+
+ggplot(data=distance_rating_long) +
+  geom_line(aes(x=condition, y=value, group=Subject), alpha=1) +
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.8) +
+  geom_jitter(aes(x=condition, y=value), alpha=0.8, width=0, alpha=0.8) +
+  #geom_text(aes(x=condition, y=value, label=Subject), vjust=-1, size=3) +
+  scale_fill_manual(values=c("#306690", "#5E6469")) +
+  ggtitle("Distance rating")+
+  ylim(0, 1)
+
+path_to_save <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/distance_rating.jpg"
+jpeg(path_to_save, width = 1200, height = 1200, res=300)
+last_plot()
+dev.off()
+
+##
+#ggpaired(distance_rating_long, x="condition", y="value",
+ #        color="condition", line.color="grey",
+#         line.size=0.4)+
+#  ylim(0, 1)+
+#  stat_compare_means(method = "t.test",paired = TRUE) + 
+#  geom_jitter(aes(color = condition), position = position_jitterdodge(jitter.width = 0), alpha = 0.8) + 
+#  scale_color_manual(values=c("#5E6469", "#5E6469"), labels = c("Boundary Pairs", "Non-Boundary Pairs")) +
+#  geom_boxplot(aes(fill = condition), width = 0.5, alpha = 0.8) +
+#  scale_fill_manual(values=c("#306690", "#5E6469"), labels = c("Boundary Pairs", "Non-Boundary Pairs")) +
+#  guides(color=guide_legend(override.aes=list(size=1)),
+#         fill=guide_legend(override.aes=list(size=1)))+
+#  labs(y = "distance_rating")
+
+
+
+```
+
+# Average encoding reaction time
+
+### ANOVA +block
+
+```{r}
+#add the block
+model4= aov(value~condition+as.factor(Subject), data=encoding_time_long)
+summary(model4)
+layout(matrix(c(1,2,3,4), 2,2))
+plot(model4)
+```
+
+### Visualization
+
+```{r, fig.width=7,fig.height=7}
+encoding_time_long$condition <- factor(encoding_time_long$condition, levels = c("B", "NB", "FT", "PreB"))
+ggplot(data=encoding_time_long) +
+  geom_line(aes(x=condition, y=value, group=Subject), alpha=0.7) + # Connect dots of same participant
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.7) +
+  geom_jitter(aes(x=condition, y=value), alpha=0.6, width=0) +
+  #geom_text(aes(x=condition, y=value, label=Subject), vjust=-1, size=2) + # Label each participant
+  ggtitle("Encoding time")+
+  scale_fill_manual(values=c("#306690",  "#5E6469", "skyblue1","white")) +
+  ylim(0, 2.2)
+
+#save the plots to tiff format
+path_to_save <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/encoding_time.tiff"
+tiff(path_to_save, width = 500, height = 400,res=90)
+last_plot()
+dev.off()
+```
+
+
+
+# Order accuracy
+
+### Participants as a block
+
+#### t-test
+
+```{r}
+t.test(order_accuracy$NB, order_accuracy$B, paired=TRUE, alt="two.sided")
+```
+### Visualization
+```{r, fig.width=4,fig.height=4}
+library(ggpubr)
+
+ggpaired(order_accuracy_long, x="condition", y="value",
+         color="condition", line.color="grey",
+         line.size=0.4) +
+  ylim(0, 1) +
+  stat_compare_means(method = "t.test", paired = TRUE) + 
+  geom_jitter(aes(color = condition), position = position_jitterdodge(jitter.width = 0), alpha = 1) + 
+  scale_color_manual(values=c("#5E6469", "#5E6469"), labels = c("Boundary Pairs", "Non-Boundary Pairs")) +
+  geom_boxplot(aes(fill = condition), width = 0.5, alpha = 0.7) +
+  scale_fill_manual(values=c("#306690", "#5E6469"), labels = c("Boundary Pairs", "Non-Boundary Pairs")) +
+  geom_text(aes(x=condition, y=value, label=Subject), vjust=-1, size=3) + # Added this line for labeling+
+  labs(y = "Order accuracy")
+
+ggplot(data=order_accuracy_long) +
+  geom_line(aes(x=condition, y=value, group=Subject), alpha=0.9) +
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.5) +
+  geom_jitter(aes(x=condition, y=value), alpha=0.7, width=0) +
+  #geom_text(aes(x=condition, y=value, label=Subject), hjust=-0.1, vjust=-1, size=3) +
+  scale_fill_manual(values=c("#306690", "#5E6469")) +
+  ggtitle("Order accuracy")+
+  ylim(0, 1)
+
+path_to_save <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/order_accuracy.jpg"
+jpeg(path_to_save, width = 1200, height = 1200, res=300)
+last_plot()
+dev.off()
+
+
+```
+# Source accuracy
+
+### Participants as a block
+
+#### Anova
+
+```{r}
+model5= aov(value~condition+factor(Subject),
+            data=source_accuracy_long)
+summary(model5)
+
+t.test(source_accuracy$NB, source_accuracy$B, paired=TRUE, alt="two.sided")
+```
+
+```{r}
+layout(matrix(c(1,2,3,4), 2,2))
+plot(model5)
+```
+Graph all
+```{r,fig.width=6,fig.height=6}
+source_accuracy_long$condition <- factor(source_accuracy_long$condition, levels = c("B", "NB", "FT", "PreB"))
+ggplot(data=source_accuracy_long)+
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.5)+
+  geom_jitter(aes(x=condition, y=value),alpha = 0.4, width=0.2, size=1)+
+  scale_fill_manual(values=c("#306690", "#5E6469","skyblue1","white"))+
+  #geom_text(aes(x=condition, y=value, label=Subject), hjust=-0.1, vjust=-1, size=2) +
+  ggtitle("Source_accuracy")+
+  ylim(0, 1)
+
+path_to_save <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/Source_accuracy.jpg"
+jpeg(path_to_save, width = 1200, height = 1200, res=300)
+last_plot()
+dev.off()
+```
+Graph only B and NB items
+
+```{r, fig.width=4,fig.height=5}
+filtered_data <- source_accuracy_long %>% filter(condition %in% c('B', 'NB'))
+
+ggplot(data=filtered_data) +
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.4) +
+  geom_jitter(aes(x=condition, y=value),alpha = 0.9, width=0) +
+  scale_fill_manual(values=c("#306690", "#5E6469","skyblue1","white")) +
+  geom_text(aes(x=condition, y=value, label=Subject), hjust=-0.1, vjust=-1, size=3) +
+  geom_line(aes(x=condition, y=value, group=Subject), alpha=0.9) +
+  ylim(0, 1)
+```
+Correlation: beh_Source_memory vs. beh_order accuracy
+```{r }
+
+
+
+```
+
+
+
+
+
+Graph reaction_time_vs_source
+
+```{r, fig.width=2,fig.height=4}
+#filtered_data <- source_accuracy_long %>% filter(condition %in% c('B', 'NB'))
+
+ggplot(data=reaction_time_vs_source_long) +
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.4) +
+  geom_jitter(aes(x=condition, y=value),alpha = 0.9, width=0) +
+  scale_fill_manual(values=c("#306690", "#5E6469")) +
+  geom_text(aes(x=condition, y=value, label=Subject), hjust=-0.1, vjust=-0.5, size=3) +
+  geom_line(aes(x=condition, y=value, group=Subject), alpha=0.9)+
+  ggtitle("Reaction time vs source accuracy")
+```
+Graph reaction_time_vs_order
+
+```{r, fig.width=2,fig.height=2}
+#filtered_data <- source_accuracy_long %>% filter(condition %in% c('B', 'NB'))
+
+ggplot(data=reaction_time_vs_order_long) +
+  geom_boxplot(aes(x=condition, y=value, fill=condition), alpha=0.4) +
+  geom_jitter(aes(x=condition, y=value),alpha = 0.9, width=0) +
+  scale_fill_manual(values=c("#306690", "#5E6469")) +
+  geom_text(aes(x=condition, y=value, label=Subject), hjust=-0.1, vjust=-0.5, size=3) +
+  geom_line(aes(x=condition, y=value, group=Subject), alpha=0.9)+
+  ggtitle("Reaction time vs order accuracy")+
+  ylim(0,2)
+```
