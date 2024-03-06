@@ -1,5 +1,5 @@
 
-/* COMP 211:  C basics.
+/* COMP 211: 
  *
  * Hide and seek  code.
  *
