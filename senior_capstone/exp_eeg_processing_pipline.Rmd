@@ -1,0 +1,334 @@
+---
+title: "NEvent_postprocess"
+author: "Nicole Deng"
+output: html_document
+date: "2023-04-29"
+---
+#Overview 
+This R Markdown script serves as the first step in the data processing pipeline for the NEvent experiment. The script ingests raw output files produced by PsychoPy and conducts a range of data manipulations to ready the data for ensuing group effect studies and EEG analyses.
+
+#Ouput
+1. Individual datasets for encoding, temporal_memory, and source_memory (these are optional and the relevant code is currently commented out).
+2. A merged dataset that includes all the data from the above three files, intended for integrated analyses.
+3. A dataset containing behavioral results for individual participants.
+
+```{r setup}
+# Function to search for the CSV file of a specific subject and then load it
+search_and_load_file <- function(subject_num) {
+  
+  # Create the directory path based on the subject number
+  directory <- paste0("/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/sub-", sprintf("%03d", subject_num), "/beh/")
+  
+  # Use list.files to search for CSV files with the subject number in the specified directory
+  files <- list.files(directory, pattern = paste0("^", subject_num, "_THESES_EVENT_FEDERICO_PSYCHOPY.*\\.csv$"), full.names = TRUE)
+  
+  # Check if the files exist
+  if(length(files) == 0) {
+    warning(sprintf("No CSV files found for subject number %d", subject_num))
+    return(NULL)
+  } else {
+    # Return the file path (assuming there's only one match)
+    file_path <- files[1]
+    
+    # Read the file into R
+    data <- read.csv(file_path)
+    
+    # Return the data
+    return(data)
+  }
+}
+
+```
+
+```{r}
+# Test the function
+subject_num <- 62
+data <- search_and_load_file(subject_num)
+
+if(!is.null(data)) {
+  cat("The file is found, yay! CSV file for subject", subject_num, "has been loaded into 'data'.\n")
+
+} else {
+  cat("No CSV file found for subject", subject_num, "\n")
+}
+```
+
+```{r}
+library(dplyr)
+
+#create the encoding file
+ ### WHEN RUNNING EEG PARTICIPANTS ####
+var.keep.encoding <- c("image_file", "category","boundary_type","tone_pitch",	"tone_source",	"list_num",	"event_num",	"serialpos_experiment",	"serialpos_list",	"serialpos_event","sound_1.started","stimulus_image.started","controller_encoding_resp.keys",	"controller_encoding_resp.rt","participant","date")
+
+ ### WHEN RUNNING PURELY BEH PARTICIPANTS 
+#var.keep.encoding <- c("image_file", "category","boundary_type","tone_pitch",	"tone_source",	"list_num",	"event_num",	"serialpos_experiment",	"serialpos_list",	"serialpos_event","controller_encoding_resp.keys",	"controller_encoding_resp.rt","participant","date")
+
+encoding <- data [,var.keep.encoding ]
+encoding <- encoding[complete.cases(encoding$tone_pitch),]
+#encoding <- filter (encoding, list_num != 0)
+
+### RANGES OF COLUMNS MIGHT NOT BE THE SAME FOR EVERY FILE
+
+#create the temporal file
+var.keep.temporal_memory <- c("image1_temp_order.started","controller_order_resp.keys",	"controller_order_resp.rt",	"image1_temp_distance.started","controller_distance_resp.keys",	"controller_distance_resp.rt","participant","date")
+t1 <- data [,var.keep.temporal_memory]
+t2 <- data [,11:33] 
+temporal_memory <- cbind (t2, t1)
+temporal_memory <- temporal_memory[complete.cases(temporal_memory$image1_list_num),]
+temporal_memory<- filter (temporal_memory, image1_list_num != 0)
+
+#create source file 
+t3 <- data [,34:44] 
+var.keep.source <- c("image_source.started",	"image_source.stopped",	"controller_source_resp.keys",	"controller_source_resp.rt","participant","date")
+t4 <- data [,var.keep.source]
+source_memory <- cbind (t3, t4)
+source_memory <- source_memory[complete.cases(source_memory$source_image_tone_pitch),]
+source_memory <- filter (source_memory, source_image_list_num != 0)
+
+subjectnum = as.character(temporal_memory$participant[4])
+```
+
+## encoding
+```{r}
+encoding$TrueBoundary <- encoding$boundary_type
+encoding$TrueBoundary <- ifelse(encoding$event_num == 0 & encoding$boundary_type == "B", "FT", encoding$boundary_type)
+encoding$TrueBoundary [encoding$TrueBoundary=="2"] <-"NB"
+encoding$TrueBoundary [encoding$TrueBoundary=="1"] <-"B"
+encoding$TrueBoundary [encoding$TrueBoundary=="3"] <-"PreB"
+
+encoding$BoundarySalience <- NA
+for (i in 2:nrow(encoding)){
+  encoding$BoundarySalience[i] <-encoding$tone_pitch[i]-encoding$tone_pitch[i-1]
+}
+```
+
+## temporal_memory
+### check the correctness 
+```{r}
+#var <-c("controller_order_resp.keys","left_image","right_image","correct_answer")
+#temporal_memory_1 <- temporal_memory [,var] 
+for (i in 1:nrow(temporal_memory)) {
+  if (temporal_memory$controller_order_resp.keys[i] == 0) {
+    temporal_memory$controller_order_resp.keys[i] <- temporal_memory$left_image[i]
+  } else {
+    temporal_memory$controller_order_resp.keys[i]<- temporal_memory$right_image[i]
+  }
+}
+# append the col with correctness results back to main file
+temporal_memory$correct <- ifelse(temporal_memory$controller_order_resp.keys == temporal_memory$correct_answer, 1, 0)
+#temporal_memory_1$correct <- as.numeric(temporal_memory_1$correct)
+#temporal_memory <- cbind (temporal_memory, temporal_memory_1$correct)
+```
+
+### Calculate pair Salience and distance rating
+```{r}
+#distance rating
+if (subject_num%%2==0 || subject_num<43){ #if subject number is even OR smaller than 43 --> use the original code
+  temporal_memory$controller_distance_resp.keys[temporal_memory$controller_distance_resp.keys == 2] <-1
+} else { #subject number is odd
+  temporal_memory$controller_distance_resp.keys[temporal_memory$controller_distance_resp.keys == 0] <-1
+  temporal_memory$controller_distance_resp.keys[temporal_memory$controller_distance_resp.keys == 2] <-0
+}
+
+temporal_memory$PairSalience <- NA
+for (i in 1:nrow(temporal_memory)){
+  temporal_memory$PairSalience[i] <-temporal_memory$image2_tone_pitch[i]-temporal_memory$image1_tone_pitch[i]
+}
+```
+
+
+## Source_memory
+```{r}
+source_memory$TrueBoundary <- ifelse(source_memory$source_image_event_num == 0 & source_memory$source_image_boundary_type == "B", "FT", source_memory$source_image_boundary_type)
+source_memory$controller_source_resp.keys[source_memory$controller_source_resp.keys == 2] <-"R"
+source_memory$controller_source_resp.keys[source_memory$controller_source_resp.keys == 0] <-"L"
+source_memory$correct_source <- NA
+source_memory$correct_source <- ifelse(source_memory$controller_source_resp.keys == source_memory$source_image_tone_source, 1, 0)
+```
+
+## export the datasets
+```{r}
+
+#filename1=paste("encoding_Sub",subjectnum,".csv")
+#write.csv(encoding,filename1)
+
+#filename2=paste("temporal_memory_Sub",subjectnum,".csv")
+#write.csv(temporal_memory,filename2)
+
+#filename3=paste("source_memory_Sub",subjectnum,".csv")
+#write.csv(source_memory,filename3)
+
+```
+
+## merging the dataset
+```{r}
+#transform from wide to long
+library(tidyr)
+library(dplyr)
+temporal_memory_long <- gather(temporal_memory,key="image_type",value="image_file",image1:image2)
+temporal_memory_long <- select(temporal_memory_long, -(3:18))
+
+#give encoding an id base of orders
+#encoding <- encoding %>% mutate(id=1:n())
+mergefile <- merge(encoding, temporal_memory_long, by="image_file",all=TRUE)
+colnames (source_memory) [1]<- "image_file"
+mergefile <- merge(mergefile, source_memory, by="image_file",all=TRUE)
+mergefile <- arrange(mergefile,serialpos_experiment)
+
+if (subject_num == 46) {
+  mergefile <- mergefile[-(236:251), ] # Remove rows 236 to 251 due to EEG recording interruption
+}
+
+if (subject_num == 52) {
+  mergefile <- mergefile[-(418:422), ] # Remove rows 236 to 251 due to EEG recording interruption
+}
+
+#merge file export
+filename4=paste("mergefile_Sub-0",subjectnum,".csv",sep="")
+pathname <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/mergefile"
+full_path <- paste0(pathname,"/",filename4)
+write.csv(mergefile, file = full_path)
+```
+
+##quick stats
+```{r}
+
+library(descr)
+library(ggplot2)
+print("distance rating")
+tapply(temporal_memory$controller_distance_resp.keys,temporal_memory$pairtype,mean)
+print("temporal order accuracy") 
+tapply(temporal_memory$correct,temporal_memory$pairtype,mean)
+print("source memory accuracy")
+tapply(source_memory$correct_source,source_memory$TrueBoundary,mean)
+print("encoding time")
+encoding$controller_encoding_resp.rt <- as.numeric(encoding$controller_encoding_resp.rt)
+tapply(encoding$controller_encoding_resp.rt, encoding$TrueBoundary, mean, na.rm=TRUE)
+
+print('encoding reaction time vs. source accuracy')
+tapply(mergefile$controller_encoding_resp.rt, factor(mergefile$correct_source), mean, na.rm=TRUE)
+
+print('encoding reaction time vs. order accuracy')
+tapply(mergefile$controller_encoding_resp.rt, factor(mergefile$correct), mean, na.rm=TRUE)
+```
+```{r}
+# Create a new variable that combines pairtype and image2_list_num
+temporal_memory$grouping_var <- interaction(temporal_memory$pairtype, temporal_memory$image2_list_num)
+
+# Calculate the mean of controller_distance_resp.keys for each combination of pairtype and image2_list_num
+distance_rating_by_list <- tapply(temporal_memory$controller_distance_resp.keys, temporal_memory$grouping_var, mean)
+
+print (distance_rating_by_list)
+# Load necessary libraries
+library(ggplot2)
+
+library(tidyr)
+
+
+# Transform the output into a data frame
+distance_df <- data.frame(mean_rating = unname(distance_rating_by_list), condition = names(distance_rating_by_list))
+
+# Separate the condition into type ('B' or 'NB') and number
+distance_df$type <- gsub("\\..*", "", distance_df$condition)
+distance_df$number <- as.numeric(gsub(".*\\.", "", distance_df$condition))
+
+# Convert the 'number' column to a factor with levels ordered
+distance_df$number <- factor(distance_df$number, levels = sort(unique(distance_df$number)))
+
+# Summarize mean ratings for 'B' and 'NB' separately for each number
+summary_df <- distance_df %>%
+  group_by(number, type) %>%
+  summarize(mean_rating = mean(mean_rating), .groups = 'drop')
+
+# Create a new data frame to determine where 'B' is greater than 'NB'
+comparison_df <- summary_df %>%
+  spread(key = type, value = mean_rating) %>%
+  mutate(B_greater_NB = B > NB)
+
+# Merge the comparison information back to the original data frame
+distance_df <- distance_df %>%
+  left_join(comparison_df %>% select(number, B_greater_NB), by = "number")
+
+# Now create the bar plot with highlighting
+ggplot(distance_df, aes(x = number, y = mean_rating, fill = interaction(B_greater_NB, type))) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  scale_fill_manual(values = c("FALSE.B" = "blue", "TRUE.B" = "red", "FALSE.NB" = "grey", "TRUE.NB" = "grey")) +
+  labs(x = "Condition Number", y = "Mean Distance Rating", fill = "Condition Highlight") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Rotate x labels for clarity
+
+# Display the plot
+outputname=paste(subjectnum,".tiff",sep="")
+path_to_save <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/distance_rating_by_list"
+full_path1 <- paste0(path_to_save,"/",outputname)
+tiff(full_path1, width = 900, height = 400, res=100)
+last_plot()
+dev.off()
+
+
+```
+# Data Aggregation and Export
+```{r}
+#
+mean_distance_rating <- tapply(temporal_memory$controller_distance_resp.keys, temporal_memory$pairtype, mean)
+mean_temporal_order_accuracy <- tapply(temporal_memory$correct, temporal_memory$pairtype, mean)
+mean_source_memory_accuracy <- tapply(source_memory$correct_source, source_memory$TrueBoundary, mean)
+mean_encoding_time <- tapply(encoding$controller_encoding_resp.rt, encoding$TrueBoundary, mean, na.rm=TRUE)
+
+
+mean_reaction_time_vs_source <- tapply(mergefile$controller_encoding_resp.rt, factor(mergefile$correct_source), mean, na.rm=TRUE)
+names(mean_reaction_time_vs_source)[names(mean_reaction_time_vs_source) == "0"] <- "Incorrect Source"
+names(mean_reaction_time_vs_source)[names(mean_reaction_time_vs_source) == "1"] <- "Correct Source"
+
+mean_reaction_time_vs_order <- tapply(mergefile$controller_encoding_resp.rt, factor(mergefile$correct), mean, na.rm=TRUE)
+names(mean_reaction_time_vs_order)[names(mean_reaction_time_vs_order) == "0"] <- "Incorrect order"
+names(mean_reaction_time_vs_order)[names(mean_reaction_time_vs_order) == "1"] <- "Correct order"
+
+##
+df_distance_rating <- data.frame(Category = names(mean_distance_rating),
+                                 DistanceRating = mean_distance_rating)
+df_temporal_order_accuracy <- data.frame(Category = names(mean_temporal_order_accuracy),
+                                         TemporalOrderAccuracy = mean_temporal_order_accuracy)
+
+df_source_memory_accuracy <- data.frame(Category = names(mean_source_memory_accuracy),
+                                        SourceMemoryAccuracy = mean_source_memory_accuracy)
+df_encoding_time <- data.frame(Category = names(mean_encoding_time),
+                               EncodingTime = mean_encoding_time)
+df_reaction_time_vs_source <- data.frame(Category = names(mean_reaction_time_vs_source),
+                               Reaction_time_vs_source = mean_reaction_time_vs_source)
+
+mean_reaction_time_vs_order <- data.frame(Category = names(mean_reaction_time_vs_order),
+                               Reaction_time_vs_order = mean_reaction_time_vs_order)
+
+# Merge these individual data frames into one wide-format data frame
+merged_results <- Reduce(function(x, y) merge(x, y, by = "Category", all = TRUE),
+                         list(df_distance_rating,
+                              df_temporal_order_accuracy,
+                              df_source_memory_accuracy,
+                              df_encoding_time, df_reaction_time_vs_source, mean_reaction_time_vs_order))
+
+# Convert merged data frame to a matrix
+merged_matrix <- as.matrix(merged_results)
+
+# Transpose the matrix
+transposed_matrix <- t(merged_matrix)
+
+# Convert the first row to column names
+colnames(transposed_matrix) <- transposed_matrix[1, ]
+transposed_matrix <- transposed_matrix[-1, , drop = FALSE]
+
+# Convert the transposed matrix back to a data frame
+final_results <- as.data.frame(transposed_matrix, stringsAsFactors = FALSE)
+
+# Convert all numeric columns to numeric type (they will be read as characters initially)
+numeric_cols <- colnames(final_results)
+final_results[numeric_cols] <- lapply(final_results[numeric_cols], as.numeric)
+
+#create ouput file
+outputname=paste("results_Sub",subjectnum,".csv",sep="")
+pathname1 <- "/Volumes/ezzyatlab/experiments/NEvent/exp_eeg_v1/eeg_beh_results/individual_results"
+full_path1 <- paste0(pathname1,"/",outputname)
+write.csv(final_results, file = full_path1)
+
+```
+
