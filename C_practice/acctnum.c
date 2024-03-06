@@ -1,4 +1,4 @@
-/* COMP 211 Homework 4:  Functions.
+/* COMP 211:  Functions.
  *
  * Question2
  *
