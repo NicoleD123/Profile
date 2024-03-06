@@ -1,4 +1,4 @@
-/* COMP 211:  Functions.
+/* COMP 211
  *
  * Specifications.
  *
