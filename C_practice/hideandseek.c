@@ -1,5 +1,5 @@
 
-/* COMP 211 Homework 3:  C basics.
+/* COMP 211:  C basics.
  *
  * Hide and seek  code.
  *
