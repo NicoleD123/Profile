@@ -1,0 +1,11 @@
+Prey birth rate: .5
+Prey carrying capacity: 100
+Predator death rate:  .1
+Low kill rate: 0.0
+High kill rate: .005
+Kill step:  .0005
+Handling time: 4
+Conversion rate: .5
+Initial prey population: 50
+Initial predator population: 100
+Time steps: 100
